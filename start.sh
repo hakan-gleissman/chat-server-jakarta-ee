@@ -4,22 +4,16 @@ set -e
 PORT="${PORT:-8080}"
 echo "Render PORT=${PORT}"
 
-asadmin start-domain domain1
+DOMAIN_XML="/opt/glassfish7/glassfish/domains/domain1/config/domain.xml"
 
-# Sätt port + bind till alla interfaces
-asadmin set server.network-config.network-listeners.network-listener.http-listener-1.port="${PORT}"
-asadmin set server.network-config.network-listeners.network-listener.http-listener-1.address=0.0.0.0
+# Byt port på vanliga http listeners (8080/8181 -> $PORT)
+# (vissa GF-domäner använder http-listener-2 som faktiskt lyssnar på 8181)
+sed -i "s/network-listener name=\"http-listener-1\" port=\"[0-9]\+\"/network-listener name=\"http-listener-1\" port=\"${PORT}\"/g" "$DOMAIN_XML" || true
+sed -i "s/network-listener name=\"http-listener-2\" port=\"[0-9]\+\"/network-listener name=\"http-listener-2\" port=\"${PORT}\"/g" "$DOMAIN_XML" || true
 
-# Stäng admin listener (ok om det lyckas, annars fortsätt)
-asadmin set server.network-config.network-listeners.network-listener.admin-listener.enabled=false || true
+# Försök sätta address=0.0.0.0 (om address-attribut inte finns så händer inget)
+sed -i "s/network-listener name=\"http-listener-1\" /network-listener name=\"http-listener-1\" address=\"0.0.0.0\" /" "$DOMAIN_XML" || true
+sed -i "s/network-listener name=\"http-listener-2\" /network-listener name=\"http-listener-2\" address=\"0.0.0.0\" /" "$DOMAIN_XML" || true
 
-# Ta bort eller gör tolerant:
-# asadmin set configs.config.server-config.iiop-service.enabled=false || true
-
-# (Valfritt) logga vad som blev satt
-asadmin get server.network-config.network-listeners.network-listener.http-listener-1.port || true
-asadmin get server.network-config.network-listeners.network-listener.http-listener-1.address || true
-
-# Starta om i foreground
-asadmin stop-domain domain1
+# Starta direkt i foreground (ingen extra start/stop)
 exec asadmin start-domain -v domain1
