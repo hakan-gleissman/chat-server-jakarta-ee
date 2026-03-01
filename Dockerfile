@@ -20,9 +20,8 @@ FROM ghcr.io/eclipse-ee4j/glassfish:7.1.0
 # Kopiera WAR till autodeploy i domain1
 # Byt filnamn om du har ett specifikt finalName i pom.xml
 COPY --from=build /app/target/demo-jakarta-facelets-2026-1.0-SNAPSHOT.war /opt/glassfish/glassfish/domains/domain1/autodeploy/chatserver.war
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
-# HTTP + Admin Console
-EXPOSE 8080 4848
-
-# Starta servern i foreground
-CMD ["asadmin", "start-domain", "-v"]
+EXPOSE 8080
+CMD ["/start.sh"]
