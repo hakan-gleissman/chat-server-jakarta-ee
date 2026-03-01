@@ -1,28 +1,47 @@
-# syntax=docker/dockerfile:1
+#!/usr/bin/env sh
+set -eu
 
-########## BUILD STAGE ##########
-FROM maven:3.9.9-eclipse-temurin-21 AS build
-WORKDIR /app
+PORT="${PORT:?PORT env saknas (Render sätter PORT automatiskt)}"
+echo "Render PORT=${PORT}"
 
-COPY pom.xml .
-RUN mvn -B -q -DskipTests dependency:go-offline
+DOMAIN_XML="/opt/glassfish7/glassfish/domains/domain1/config/domain.xml"
+echo "Using domain.xml: ${DOMAIN_XML}"
 
-COPY src ./src
-RUN mvn -B -DskipTests package
+# Visa vad vi faktiskt kommer ändra (för felsökning i Render-loggen)
+echo "Before (http-listener-1 row):"
+grep -n 'network-listener name="http-listener-1"' "${DOMAIN_XML}" || true
 
-########## RUNTIME STAGE ##########
-FROM ghcr.io/eclipse-ee4j/glassfish:7.1.0
+# 1) Sätt http-listener-1 port till Render-porten
+# Matchar både port="8080" och port="${something}" men byter till port="${PORT}"
+sed -i -E \
+  "s/(network-listener name=\"http-listener-1\"[^>]*port=\")([0-9]+)(\"[^>]*>)/\1${PORT}\3/g" \
+  "${DOMAIN_XML}" || true
 
-# Kopiera WAR till autodeploy
-COPY --from=build /app/target/demo-jakarta-facelets-2026-1.0-SNAPSHOT.war \
-  /opt/glassfish7/glassfish/domains/domain1/autodeploy/chatserver.war
+# 2) Se till att http-listener-1 är bunden till 0.0.0.0
+# a) om address="..." redan finns: byt värde
+sed -i -E \
+  "s/(network-listener name=\"http-listener-1\"[^>]*address=\")([^\"]+)(\"[^>]*>)/\10.0.0.0\3/g" \
+  "${DOMAIN_XML}" || true
 
-# Lägg script i en mapp vi kontrollerar
-USER root
-RUN mkdir -p /opt/app
+# b) om address saknas helt: injicera address="0.0.0.0" direkt efter namnet
+# (gör inget om den redan finns)
+grep -q 'network-listener name="http-listener-1"[^>]*address=' "${DOMAIN_XML}" || \
+  sed -i -E \
+    's/(network-listener name="http-listener-1")/\1 address="0.0.0.0"/' \
+    "${DOMAIN_XML}" || true
 
-COPY start.sh /opt/app/start.sh
-RUN chmod +x /opt/app/start.sh
+# 3) Stäng andra listeners som kan göra att Render “ser” fel port
+# http-listener-2 (https/8181) och admin-listener (4848)
+sed -i -E \
+  's/(network-listener name="http-listener-2"[^>]*enabled=")true(")/\1false\2/g' \
+  "${DOMAIN_XML}" || true
 
-EXPOSE 8080
-CMD ["/opt/app/start.sh"]
+sed -i -E \
+  's/(network-listener name="admin-listener"[^>]*enabled=")true(")/\1false\2/g' \
+  "${DOMAIN_XML}" || true
+
+echo "After (http-listener-1 row):"
+grep -n 'network-listener name="http-listener-1"' "${DOMAIN_XML}" || true
+
+# Starta GlassFish i foreground
+exec asadmin start-domain -v domain1
