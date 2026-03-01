@@ -1,47 +1,28 @@
-#!/usr/bin/env sh
-set -eu
+# syntax=docker/dockerfile:1
 
-# Render sätter PORT (t.ex. 10000). Vi MÅSTE lyssna på den porten.
-PORT="${PORT:?PORT env saknas}"
-echo "Render PORT=${PORT}"
+########## BUILD STAGE ##########
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /app
 
-# Hitta domain.xml oavsett om imagen använder /opt/glassfish eller /opt/glassfish7
-DOMAIN_XML="$(find /opt -type f -path '*/glassfish/domains/domain1/config/domain.xml' 2>/dev/null | head -n 1 || true)"
-if [ -z "${DOMAIN_XML}" ]; then
-  DOMAIN_XML="$(find /opt -type f -path '*/glassfish7/glassfish/domains/domain1/config/domain.xml' 2>/dev/null | head -n 1 || true)"
-fi
+COPY pom.xml .
+RUN mvn -B -q -DskipTests dependency:go-offline
 
-if [ -z "${DOMAIN_XML}" ]; then
-  echo "Kunde inte hitta domain.xml under /opt"
-  exit 1
-fi
+COPY src ./src
+RUN mvn -B -DskipTests package
 
-echo "Using domain.xml: ${DOMAIN_XML}"
-echo "Before:"
-grep -n 'network-listener name="http-listener-1"' "${DOMAIN_XML}" || true
+########## RUNTIME STAGE ##########
+FROM ghcr.io/eclipse-ee4j/glassfish:7.1.0
 
-# Sätt http-listener-1 port till Render-port (robust mot attributordning)
-sed -i -E \
-  "s/(network-listener name=\"http-listener-1\"[^>]* port=\")([0-9]+)(\")/\1${PORT}\3/g" \
-  "${DOMAIN_XML}"
+# Kopiera WAR till autodeploy
+COPY --from=build /app/target/demo-jakarta-facelets-2026-1.0-SNAPSHOT.war \
+  /opt/glassfish7/glassfish/domains/domain1/autodeploy/chatserver.war
 
-# Säkerställ bind address=0.0.0.0 för http-listener-1
-if grep -q 'network-listener name="http-listener-1".*address="' "${DOMAIN_XML}"; then
-  sed -i -E \
-    's/(network-listener name="http-listener-1"[^>]* address=")[^"]+(")/\10.0.0.0\2/g' \
-    "${DOMAIN_XML}"
-else
-  sed -i -E \
-    's/(network-listener name="http-listener-1")/\1 address="0.0.0.0"/' \
-    "${DOMAIN_XML}"
-fi
+# Lägg script i en mapp vi kontrollerar
+USER root
+RUN mkdir -p /opt/app
 
-# Stäng andra listeners som ofta triggar Render "port scan" på fel portar
-sed -i -E 's/(network-listener name="http-listener-2"[^>]* enabled=")true(")/\1false\2/g' "${DOMAIN_XML}" || true
-sed -i -E 's/(network-listener name="admin-listener"[^>]* enabled=")true(")/\1false\2/g' "${DOMAIN_XML}" || true
+COPY start.sh /opt/app/start.sh
+RUN chmod +x /opt/app/start.sh
 
-echo "After:"
-grep -n 'network-listener name="http-listener-1"' "${DOMAIN_XML}" || true
-
-# Starta i foreground
-exec asadmin start-domain -v domain1
+EXPOSE 8080
+CMD ["/opt/app/start.sh"]
