@@ -2,20 +2,27 @@
 set -e
 
 PORT="${PORT:-8080}"
+echo "Render PORT=${PORT}"
 
-# Starta så att asadmin kan ändra config
+# Starta domain så att asadmin kan ändra config
 asadmin start-domain domain1
 
 # Sätt HTTP-porten till Render-porten
 asadmin set server.network-config.network-listeners.network-listener.http-listener-1.port="${PORT}"
 
-# (Valfritt men bra) stäng admin-listenern i prod
+# Viktigt i containers/Render: bind till alla interfaces
+asadmin set server.network-config.network-listeners.network-listener.http-listener-1.address=0.0.0.0
+
+# Rekommenderat: stäng admin-listener (4848)
 asadmin set server.network-config.network-listeners.network-listener.admin-listener.enabled=false || true
 
-# (Valfritt) stäng IIOP om du inte behöver det
+# Rekommenderat: stäng IIOP (3700) för att slippa GIOP-varningar
 asadmin set configs.config.server-config.iiop-service.enabled=false || true
 
-asadmin stop-domain domain1
+# Logga vad som faktiskt blev satt (bra för Render-loggen)
+asadmin get server.network-config.network-listeners.network-listener.http-listener-1.port
+asadmin get server.network-config.network-listeners.network-listener.http-listener-1.address
 
-# Starta i foreground
+# Starta om i foreground
+asadmin stop-domain domain1
 exec asadmin start-domain -v domain1
