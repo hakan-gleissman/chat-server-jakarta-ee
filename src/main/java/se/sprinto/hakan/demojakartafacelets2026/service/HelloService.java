@@ -16,7 +16,7 @@ public class HelloService {
             Logger.getLogger(HelloService.class.getName());
 
     public List<HelloMessage> getAllMessages() {
-        LOGGER.info("getAllMessages()");
+        LOGGER.info("getAllMessages() hello");
         return helloRepository.getMessages();
     }
 }
