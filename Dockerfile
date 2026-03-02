@@ -12,20 +12,19 @@ RUN mvn -B -DskipTests package
 
 
 ########## RUNTIME STAGE ##########
-# OBS: välj en TomEE 10 (Jakarta) webprofile/plume som matchar dina behov.
-# Om taggen nedan inte finns hos dig, byt till en existerande TomEE 10-tag.
 FROM tomee:10-jre21-webprofile
 
-# Installera unzip (för debugging / verifiering av WAR)
+# Installera unzip (så start.sh kan lista WAR-innehåll vid felsökning)
 RUN apt-get update && \
     apt-get install -y unzip && \
     rm -rf /var/lib/apt/lists/*
 
-# Lägg appen som ROOT så att den svarar på /
+# Deploya din app som en egen context path (inte ROOT)
+# Ex: chatserver.war => URL blir /chatserver
 COPY --from=build /app/target/demo-jakarta-facelets-2026-1.0-SNAPSHOT.war \
-  /usr/local/tomee/webapps/ROOT.war
+  /usr/local/tomee/webapps/chatserver.war
 
-# Lägg startscript med rätt rättigheter direkt (slipper chmod-problemet)
+# Startscript (patchar port till $PORT och loggar sanity checks)
 COPY --chmod=755 start.sh /usr/local/bin/start.sh
 
 EXPOSE 8080
