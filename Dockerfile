@@ -1,10 +1,7 @@
 # syntax=docker/dockerfile:1
 
-############################
-# BUILD STAGE
-############################
+########## BUILD STAGE ##########
 FROM maven:3.9.9-eclipse-temurin-21 AS build
-
 WORKDIR /app
 
 COPY pom.xml .
@@ -14,18 +11,17 @@ COPY src ./src
 RUN mvn -B -DskipTests package
 
 
-############################
-# RUNTIME STAGE
-############################
-FROM ghcr.io/eclipse-ee4j/glassfish:7.1.0
+########## RUNTIME STAGE ##########
+# OBS: välj en TomEE 10 (Jakarta) webprofile/plume som matchar dina behov.
+# Om taggen nedan inte finns hos dig, byt till en existerande TomEE 10-tag.
+FROM tomee:10-jre21-webprofile
 
-# Kopiera WAR från build-steget
+# Lägg appen som ROOT så att den svarar på /
 COPY --from=build /app/target/demo-jakarta-facelets-2026-1.0-SNAPSHOT.war \
-  /opt/glassfish/glassfish/domains/domain1/autodeploy/chatserver.war
+  /usr/local/tomee/webapps/ROOT.war
 
-# Kopiera startscript och sätt exec-bit direkt
-COPY --chmod=755 start.sh /start.sh
+# Lägg startscript med rätt rättigheter direkt (slipper chmod-problemet)
+COPY --chmod=755 start.sh /usr/local/bin/start.sh
 
 EXPOSE 8080
-
-CMD ["/start.sh"]
+CMD ["/usr/local/bin/start.sh"]
