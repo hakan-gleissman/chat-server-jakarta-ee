@@ -16,6 +16,11 @@ RUN mvn -B -DskipTests package
 # Om taggen nedan inte finns hos dig, byt till en existerande TomEE 10-tag.
 FROM tomee:10-jre21-webprofile
 
+# Installera unzip (för debugging / verifiering av WAR)
+RUN apt-get update && \
+    apt-get install -y unzip && \
+    rm -rf /var/lib/apt/lists/*
+
 # Lägg appen som ROOT så att den svarar på /
 COPY --from=build /app/target/demo-jakarta-facelets-2026-1.0-SNAPSHOT.war \
   /usr/local/tomee/webapps/ROOT.war
